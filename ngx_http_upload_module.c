@@ -37,6 +37,9 @@
 #define FORM_DATA_STRING                        "form-data"
 #define ATTACHMENT_STRING                       "attachment"
 #define FILENAME_STRING                         "filename=\""
+#define FILENAME_STRING_TERM                    "\""
+#define FILENAME_STRING_SPECIAL                 "filename*=utf-8''"
+#define FILENAME_STRING_SPECIAL_TERM            "\";"
 #define FIELDNAME_STRING                        "name=\""
 #define BYTES_UNIT_STRING                       "bytes "
 
@@ -3489,6 +3492,7 @@ ngx_http_process_request_body(ngx_http_request_t *r, ngx_chain_t *body)
 } /* }}} */
 
 static ngx_int_t upload_parse_content_disposition(ngx_http_upload_ctx_t *upload_ctx, ngx_str_t *content_disposition) { /* {{{ */
+    char *filename_string, *filename_term;
     char *filename_start, *filename_end;
     char *fieldname_start, *fieldname_end;
     char *p, *q;
@@ -3502,15 +3506,27 @@ static ngx_int_t upload_parse_content_disposition(ngx_http_upload_ctx_t *upload_
         return NGX_UPLOAD_MALFORMED;
     }
 
-    filename_start = strstr(p, FILENAME_STRING);
+    filename_string = FILENAME_STRING;
+    filename_term = FILENAME_STRING_TERM;
+    filename_start = strstr(p, filename_string);
+    if(filename_start == NULL) {
+      filename_string = FILENAME_STRING_SPECIAL;
+      filename_term = FILENAME_STRING_SPECIAL_TERM;
+      filename_start = strstr(p, filename_string);
+    }
 
-    if(filename_start != 0) {
+    if(filename_start != NULL) {
         
-        filename_start += sizeof(FILENAME_STRING)-1;
+        filename_start += strlen(filename_string);
 
-        filename_end = filename_start + strcspn(filename_start, "\"");
+        for(filename_end = filename_start + 1; *filename_end != 0; filename_end++) {
+          if(strchr(filename_term, *filename_end)) {
+            break;
+          }
+        }
+        //filename_end = filename_start + strcspn(filename_start, "\"");
 
-        if(*filename_end != '\"') {
+        if(*filename_end != 0 && !strchr(filename_term, *filename_end)) {
             ngx_log_debug0(NGX_LOG_DEBUG_CORE, upload_ctx->log, 0,
                            "malformed filename in part header");
             return NGX_UPLOAD_MALFORMED;
